@@ -1,0 +1,213 @@
+<!DOCTYPE html><html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>체스 vs AI</title>
+  <style>
+    body {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      font-family: Arial;
+      background: #f4f4f4;
+    }
+    #board {
+      display: grid;
+      grid-template-columns: repeat(8, 60px);
+      grid-template-rows: repeat(8, 60px);
+      margin-top: 20px;
+    }
+    .cell {
+      width: 60px;
+      height: 60px;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      font-size: 32px;
+      cursor: pointer;
+    }
+    .white { background: #eee; }
+    .black { background: #444; color: white; }
+    #log {
+      margin-top: 10px;
+      width: 480px;
+      max-height: 150px;
+      overflow-y: auto;
+      font-size: 14px;
+      background: white;
+      border: 1px solid #ccc;
+      padding: 10px;
+    }
+  </style>
+</head>
+<body>
+  <h1>체스 vs AI</h1>
+  <div>
+    <button onclick="startGame()">게임 시작</button>
+  </div>
+  <div id="board"></div>
+  <div id="log"></div>  <script>
+    const PIECES = {
+      r: "♜", n: "♞", b: "♝", q: "♛", k: "♚", p: "♟",
+      R: "♖", N: "♘", B: "♗", Q: "♕", K: "♔", P: "♙"
+    };
+
+    let board = [];
+    let selected = null;
+    let playerTurn = true;
+    const depth = 2; // 고정 깊이 설정
+
+    function startGame() {
+      document.getElementById('log').innerHTML = `AI 난이도: 고정 깊이 ${depth}`;
+      initBoard();
+      render();
+    }
+
+    function initBoard() {
+      board = [
+        ['r','n','b','q','k','b','n','r'],
+        ['p','p','p','p','p','p','p','p'],
+        ['','','','','','','',''],
+        ['','','','','','','',''],
+        ['','','','','','','',''],
+        ['','','','','','','',''],
+        ['P','P','P','P','P','P','P','P'],
+        ['R','N','B','Q','K','B','N','R']
+      ];
+      playerTurn = true;
+    }
+
+    function render() {
+      const boardDiv = document.getElementById('board');
+      boardDiv.innerHTML = '';
+      for (let y = 0; y < 8; y++) {
+        for (let x = 0; x < 8; x++) {
+          const cell = document.createElement('div');
+          cell.className = 'cell ' + ((x + y) % 2 === 0 ? 'white' : 'black');
+          cell.dataset.x = x;
+          cell.dataset.y = y;
+          cell.textContent = PIECES[board[y][x]] || '';
+          cell.onclick = () => cellClick(x, y);
+          boardDiv.appendChild(cell);
+        }
+      }
+    }
+
+    function cellClick(x, y) {
+      if (!playerTurn) return;
+      const piece = board[y][x];
+      if (selected) {
+        if (isLegalMove(selected.x, selected.y, x, y)) {
+          movePiece(selected.x, selected.y, x, y);
+          playerTurn = false;
+          render();
+          setTimeout(() => {
+            const aiMove = getBestMove(depth);
+            if (aiMove) {
+              movePiece(aiMove.from.x, aiMove.from.y, aiMove.to.x, aiMove.to.y);
+              logMove(`AI: ${aiMove.from.x},${aiMove.from.y} ➜ ${aiMove.to.x},${aiMove.to.y}`);
+            }
+            playerTurn = true;
+            render();
+          }, 200);
+        }
+        selected = null;
+      } else if (piece && piece === piece.toUpperCase()) {
+        selected = { x, y };
+      }
+    }
+
+    function movePiece(fromX, fromY, toX, toY) {
+      board[toY][toX] = board[fromY][fromX];
+      board[fromY][fromX] = '';
+    }
+
+    function isLegalMove(fx, fy, tx, ty) {
+      const piece = board[fy][fx];
+      const target = board[ty][tx];
+      if (piece && piece === piece.toUpperCase() && (!target || target !== target.toUpperCase())) {
+        return true;
+      }
+      return false;
+    }
+
+    function getAllMoves(colorUppercase) {
+      let moves = [];
+      for (let y = 0; y < 8; y++) {
+        for (let x = 0; x < 8; x++) {
+          const p = board[y][x];
+          if (p && (colorUppercase ? p === p.toUpperCase() : p === p.toLowerCase())) {
+            for (let yy = 0; yy < 8; yy++) {
+              for (let xx = 0; xx < 8; xx++) {
+                if (isLegalMove(x, y, xx, yy)) {
+                  moves.push({ from: { x, y }, to: { x: xx, y: yy } });
+                }
+              }
+            }
+          }
+        }
+      }
+      return moves;
+    }
+
+    function evaluateBoard() {
+      const values = { p: -1, r: -5, n: -3, b: -3, q: -9, k: -1000,
+                       P: 1, R: 5, N: 3, B: 3, Q: 9, K: 1000 };
+      return board.flat().reduce((sum, p) => sum + (values[p] || 0), 0);
+    }
+
+    function getBestMove(depth) {
+      let best = -Infinity;
+      let bestMove = null;
+      const moves = getAllMoves(false);
+      for (const move of moves) {
+        const backup = JSON.parse(JSON.stringify(board));
+        movePiece(move.from.x, move.from.y, move.to.x, move.to.y);
+        const score = minimax(depth - 1, -Infinity, Infinity, true);
+        board = backup;
+        if (score > best) {
+          best = score;
+          bestMove = move;
+        }
+      }
+      return bestMove;
+    }
+
+    function minimax(depth, alpha, beta, isMax) {
+      if (depth === 0) return evaluateBoard();
+      const moves = getAllMoves(isMax);
+      if (isMax) {
+        let maxEval = -Infinity;
+        for (const move of moves) {
+          const backup = JSON.parse(JSON.stringify(board));
+          movePiece(move.from.x, move.from.y, move.to.x, move.to.y);
+          const eval = minimax(depth - 1, alpha, beta, false);
+          board = backup;
+          maxEval = Math.max(maxEval, eval);
+          alpha = Math.max(alpha, eval);
+          if (beta <= alpha) break;
+        }
+        return maxEval;
+      } else {
+<!DOCTYPE html><html lang="en">
+<머리>
+ <meta charset=>UTF-8">
+ <제목>체스 vs AI</제목>
+ <스타일>
+ 본문 {
+ 디스플레이: 플렉스;
+ 플렉스 direction: 열;
+ 정렬 items: 중심;
+ 폰트 패밀리: Arial;
+ background: #f4f4f4;
+ }
+ #보드 {
+ 디스플레이: 그리드;
+ 그리드 template columns: 반복(8, 60 px);
+ 그리드 template 행: 반복(8, 60 px);
+ 마진 탑: 20 px;
+ }
+ .셀 {
+ 너비: 60 px;
+ 높이: 60 px;
+ 디스플레이: 플렉스;
+ 정당화 내용: 중심;
